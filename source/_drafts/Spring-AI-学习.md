@@ -3,6 +3,8 @@ title: Spring AI 学习笔记
 tags: [Spring AI, 学习笔记]
 ---
 
+
+
 # 核心概念
 
 
@@ -112,11 +114,11 @@ tags: [Spring AI, 学习笔记]
 
 # 聊天客户端 API
 
-详细内容参考：
-
-- [聊天客户端 API](https://www.spring-doc.cn/spring-ai/1.0.0/api_chatclient.html)
-
-- [通知器 (advisors)](https://www.spring-doc.cn/spring-ai/1.0.0/api_advisors.html)
+> 详细内容参考：
+>
+> - [聊天客户端 API](https://www.spring-doc.cn/spring-ai/1.0.0/api_chatclient.html)
+>
+> - [通知器 (advisors)](https://www.spring-doc.cn/spring-ai/1.0.0/api_advisors.html)
 
 
 
@@ -182,9 +184,7 @@ tags: [Spring AI, 学习笔记]
 
 
 
-详细内容参考：[提示](https://www.spring-doc.cn/spring-ai/1.0.0/api_prompt.html)
-
-
+>  详细内容参考：[提示](https://www.spring-doc.cn/spring-ai/1.0.0/api_prompt.html)
 
 
 
@@ -273,7 +273,131 @@ Message 是构成对话的最小单位，每条消息都包含内容、元数据
 
 
 
-# 多模态 API
+>  详细内容参考：[结构化输出](https://www.spring-doc.cn/spring-ai/1.0.0/api_structured-output-converter.html)
+
+
+
+Spring AI 提供了 `StructuredOutputConverter` 接口，旨在帮助开发者将大语言模型（LLM）的文本输出，转换为结构化的数据格式，如 JSON 或 Java 对象。这对于需要可靠的、可被下游应用程序直接使用的数据格式的场景至关重要。
+
+
+
+## 工作原理
+
+
+
+结构化输出转换器通过以下两个关键步骤实现其功能：
+
+1. **调用 LLM 之前**：转换器会自动向用户提示（Prompt）中附加格式说明。这些说明会指导 AI 模型按照预期的结构（如 JSON Schema）生成文本。
+2. **调用 LLM 之后**：转换器接收模型生成的文本输出，并将其解析、转换为指定的目标数据类型实例，例如一个 Java 类或一个 Map。
+
+值得注意的是，这是一种“最大努力”的尝试，并不保证模型总能完美遵循格式要求。因此，建议实施额外的验证机制。
+
+
+
+![img](https://docs.spring.io/spring-ai/reference/1.0/_images/structured-output-architecture.jpg)
+
+
+
+
+
+## 主要的转换器实现
+
+
+
+
+
+Spring AI 框架提供了一系列预置的转换器：
+
+- **`BeanOutputConverter<T>`**: 最常用的转换器之一。它能够将 LLM 的输出直接转换为指定的 Java 类（Bean）的实例。它通过生成 JSON Schema 来指导模型，并使用 `ObjectMapper` 将返回的 JSON 字符串反序列化为 Java 对象。
+- **`MapOutputConverter`**: 将模型的输出转换为 `java.util.Map<String, Object>` 实例。它会指导模型生成符合 RFC8259 规范的 JSON 响应。
+- **`ListOutputConverter`**: 用于将模型的输出转换为 `java.util.List`。它会指导模型生成一个以逗号分隔的列表。
+
+
+
+![](https://docs.spring.io/spring-ai/reference/1.0/_images/structured-output-hierarchy4.jpg)
+
+## 内置 JSON 模式
+
+一些 AI 模型提供专用的配置选项来生成结构化（通常是 JSON）输出，当使用这些模型时，可以通过配置相应的选项来强制模型输出严格合法的 JSON，这可以与 Spring AI 的转换器协同工作，以获得更可靠的结构化输出。
+
+- [OpenAI 结构化输出](https://www.spring-doc.cn/spring-ai/1.0.0/api_chat_openai-chat.html#_structured_outputs)可以确保您的模型生成严格符合您提供的 JSON 架构的响应。您可以在`JSON_OBJECT`保证模型生成的消息是有效的 JSON 或`JSON_SCHEMA`使用提供的架构，保证模型将生成与您提供的架构 （`spring.ai.openai.chat.options.responseFormat`选项）。
+- [Azure OpenAI](https://www.spring-doc.cn/spring-ai/1.0.0/api_chat_azure-openai-chat.html) - 提供`spring.ai.azure.openai.chat.options.responseFormat`选项指定模型必须输出的格式。设置为`{ "type": "json_object" }`启用 JSON 模式，该模式保证模型生成的消息是有效的 JSON。
+- [Ollama](https://www.spring-doc.cn/spring-ai/1.0.0/api_chat_ollama-chat.html) - 提供`spring.ai.ollama.chat.options.format`选项以指定返回响应的格式。目前，唯一接受的值是`json`.
+- [Mistral AI](https://www.spring-doc.cn/spring-ai/1.0.0/api_chat_mistralai-chat.html) - 提供`spring.ai.mistralai.chat.options.responseFormat`选项以指定返回响应的格式。将其设置为`{ "type": "json_object" }`启用 JSON 模式，该模式保证模型生成的消息是有效的 JSON。
+
+
+
+
+
+
+
+# 多模态
+
+
+
+> 详细内容参考：[多模态](https://www.spring-doc.cn/spring-ai/1.0.0/api_multimodality.html)
+
+
+
+## 核心概念：多模态
+
+多模态（Multimodality）是指大型语言模型（LLM）能够同时理解和处理来自多种不同来源或格式的信息的能力，这些信息包括文本、图像、音频和视频等。与只处理单一信息类型（如纯文本）的传统模型不同，多模态模型可以结合多种输入来生成更全面的文本响应。
+
+
+
+
+
+## Spring AI 的实现方式
+
+Spring AI 通过其 `Message` API 提供了支持多模态功能的抽象。具体实现于 `UserMessage` 类中，该类包含了两个关键字段：
+
+- **`content`**: 用于存放主要的文本输入。
+- **`media`**: 一个可选字段，允许开发者添加一个或多个非文本内容，如图像、音频或视频。通过 `MimeType` 来指定媒体的类型。
+
+
+
+![](https://docs.spring.io/spring-ai/reference/1.0/_images/spring-ai-message-api.jpg)
+
+
+
+**注意**：
+
+- 目前，`media` 字段仅适用于用户输入消息 (`UserMessage`)。
+- 模型的响应 (`AssistantMessage`) 仍然仅包含文本内容。如果需要生成非文本输出（如图、音频），则应使用专门的单模态模型。
+
+
+
+## 代码示例
+
+
+
+- **使用 `ChatClient` 的 Fluent API 示例：**
+
+```java
+String response = ChatClient.create(chatModel).prompt()
+		.user(u -> u.text("Explain what do you see on this picture?") // 文本内容
+				    .media(MimeTypeUtils.IMAGE_PNG, new ClassPathResource("/multimodal.test.png"))) // 媒体内容
+		.call()
+		.content();
+```
+
+
+
+- **直接使用 `UserMessage` 的示例：**
+
+```java
+var imageResource = new ClassPathResource("/multimodal.test.png");
+
+var userMessage = new UserMessage(
+	"Explain what do you see in this picture?", // content
+	new Media(MimeTypeUtils.IMAGE_PNG, this.imageResource)); // media
+
+ChatResponse response = chatModel.call(new Prompt(this.userMessage));
+```
+
+
+
+
 
 
 
@@ -281,11 +405,256 @@ Message 是构成对话的最小单位，每条消息都包含内容、元数据
 
 
 
+详细参考：https://www.spring-doc.cn/spring-ai/1.0.0/api_index.html
+
+
+
+
+
 # 聊天记忆
+
+> 详细内容参考：https://docs.spring.io/spring-ai/reference/api/chat-memory.html#_memory_in_chat_client
+
+
+
+大型语言模型（LLMs）是无状态的，这意味着它们不会保留关于先前交互的信息。当您希望在多个交互中保持上下文或状态时，这可能是一个限制。为了解决这个问题，Spring AI 提供了聊天记忆功能，允许您在多个与 LLM 的交互中存储和检索信息。
+
+
+
+## 核心概念
+
+
+
+- **聊天记忆 (Chat Memory) vs 聊天记录 (Chat History)**:
+  - **聊天记忆**: 指为了维持当前对话上下文，需要提供给 LLM 的相关信息。Spring AI 的 ChatMemory 抽象主要用于管理这部分内容。
+  - **聊天记录**: 指用户与模型之间全部的、完整的对话记录，通常用于审计或存档。记录建议使用 Spring Data 等持久化方案来存储完整的聊天记录，而不是使用 ChatMemory。
+- **核心抽象**:
+  - ChatMemory: 定义了记忆管理的策略，例如决定保留哪些消息、何时移除旧消息（如保留最近的N条消息）。
+  - ChatMemoryRepository: 负责记忆的底层存储和检索，是 ChatMemory 策略的具体实现。
+
+
+
+## 记忆类型 (Memory Types)
+
+
+
+### Message Window Chat Memory
+
+
+
+这是 Spring AI 默认的记忆管理策略。它只保留一个固定大小的“消息窗口”（默认为20条），当新消息加入时，最老的消息会被移除，从而控制发送给 LLM 的上下文长度。
+
+
+
+```java
+MessageWindowChatMemory memory = MessageWindowChatMemory.builder()
+    .maxMessages(10)
+    .build();
+```
+
+
+
+
+
+## 记忆存储（Memory Storage）
+
+
+
+Spring AI 提供了多种可插拔的 ChatMemoryRepository 实现，用于将聊天记忆持久化到不同地方：
+
+
+
+- **InMemoryChatMemoryRepository**:
+  - **默认实现**。将记忆存储在Java应用的内存中（使用 ConcurrentHashMap）。
+  - **优点**: 配置简单，速度快。
+  - **缺点**: 应用重启后数据会丢失。
+- **JdbcChatMemoryRepository**:
+  - 使用 JDBC 将聊天记忆存储在关系型数据库中（如 PostgreSQL, MySQL, SQL Server 等）。
+  - **优点**: 数据持久化，适合生产环境。
+  - **特性**: 支持多种数据库方言（Dialect），并能自动或手动管理数据库表的创建（通过 initialize-schema 属性）。
+- **CassandraChatMemoryRepository**:
+  - 使用 Apache Cassandra 数据库存储。
+  - **优点**: 适合需要高可用、高可扩展性和 TTL（Time-To-Live，消息自动过期）功能的场景。
+- **Neo4jChatMemoryRepository**:
+  - 使用 Neo4j 图数据库存储，将记忆和会话存为图中的节点和关系。
+  - **优点**: 可以利用图数据库的特性来分析和管理对话关系。
+
+
+
+## Chat client 使用记忆的方式
+
+主要有两种方式：通过高阶的 ChatClient 自动管理，或通过低阶的 ChatModel 手动管理。
+
+- **通过 ChatClient 使用（推荐方式）**:
+
+  - 通过配置 **通知器 (Advisors)** 来自动将记忆集成到 ChatClient 的调用流程中。
+
+  - **内置的 Advisors**:
+
+    - MessageChatMemoryAdvisor: 在每次请求时，从内存中检索历史记忆，并将其作为消息列表（`List<Message>`）附加到提示（Prompt）中。**这是最常用的方式**。
+
+      ```java
+      // 配置
+      ChatMemory chatMemory = MessageWindowChatMemory.builder().build();
+      
+      ChatClient chatClient = ChatClient.builder(chatModel)
+          .defaultAdvisors(MessageChatMemoryAdvisor.builder(chatMemory).build())
+          .build();
+      
+      // 使用
+      String conversationId = "007";
+      
+      chatClient.prompt()
+          .user("Do I have license to code?")
+          .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, conversationId))
+          .call()
+          .content();
+      ```
+
+      
+
+    - PromptChatMemoryAdvisor: 从内存中检索记忆，并将其作为纯文本附加到系统提示（System Prompt）中。
+
+    - VectorStoreChatMemoryAdvisor: 从向量数据库中检索相关的记忆记录，并附加到系统提示中。
+
+  - 在调用时，可以通过传递 conversationId 来区分和管理不同的对话会话。
+
+
+
+
+
+- **通过 ChatModel 使用（手动方式）**:
+
+  - 如果直接使用更底层的 ChatModel API，开发者需要**手动管理**记忆的整个生命周期。
+
+  - **流程**:
+
+    1. 将用户的消息添加到 ChatMemory。
+    2. 从 ChatMemory 中获取当前会话的完整消息列表。
+    3. 使用该消息列表创建 Prompt 并调用 ChatModel。
+    4. 将模型的响应消息也添加到 ChatMemory 中，以便下次使用。
+
+    ```java
+    // Create a memory instance
+    ChatMemory chatMemory = MessageWindowChatMemory.builder().build();
+    String conversationId = "007";
+    
+    // First interaction
+    UserMessage userMessage1 = new UserMessage("My name is James Bond");
+    chatMemory.add(conversationId, userMessage1);
+    ChatResponse response1 = chatModel.call(new Prompt(chatMemory.get(conversationId)));
+    chatMemory.add(conversationId, response1.getResult().getOutput());
+    
+    // Second interaction
+    UserMessage userMessage2 = new UserMessage("What is my name?");
+    chatMemory.add(conversationId, userMessage2);
+    ChatResponse response2 = chatModel.call(new Prompt(chatMemory.get(conversationId)));
+    chatMemory.add(conversationId, response2.getResult().getOutput());
+    
+    // The response will contain "James Bond"
+    ```
+
+    
+
+
+
+
 
 
 
 # 工具调用
+
+
+
+好的，这是对您提供的 Spring AI "Tool Calling"（工具调用）参考文档的简体中文总结。
+
+### Spring AI 工具调用 (Tool Calling) 核心功能概述
+
+本文档详细介绍了 Spring AI 框架中强大的“工具调用”功能。该功能允许 AI 模型与外部世界进行交互，通过调用应用程序定义的 API 或“工具”来增强其能力。
+
+---
+
+#### 1. 什么是工具调用？
+
+工具调用（也称为函数调用）是一种常见的人工智能应用模式，它允许模型利用外部工具来完成自身无法独立完成的任务。主要分为两类：
+
+*   **信息检索 (Information Retrieval)**：模型调用工具从外部数据源（如数据库、Web 服务、文件系统）获取它本身不知道的信息。例如，获取当前天气、查询最新的新闻或检索特定客户的订单记录。这是实现 **检索增强生成 (RAG)** 的关键。
+*   **执行操作 (Taking Action)**：模型调用工具在软件系统中执行具体动作。例如，发送电子邮件、预订航班、在数据库中创建新记录或触发一个工作流。
+
+**核心安全原则**：模型本身**永远不会**直接访问或执行任何 API。它只会生成一个“工具调用请求”，其中包含要调用的工具名称和所需的参数。实际的工具执行完全由您的 Spring 应用程序负责，应用程序执行后将结果返回给模型。这种分离是至关重要的安全保障。
+
+---
+
+#### 2. 工具调用的工作流程
+
+整个过程遵循一个清晰的六步流程：
+
+1.  **定义与请求**：应用程序在向 AI 模型发送请求时，会附上可用工具的定义（名称、描述、输入参数的 JSON Schema）。
+2.  **模型决策**：AI 模型根据用户的提问和工具的描述，判断是否需要以及如何调用某个工具，并返回一个包含工具名称和参数的响应。
+3.  **应用执行**：Spring AI 框架或您的应用程序代码接收到这个工具调用请求，并执行相应的 Java 方法或函数。
+4.  **获取结果**：应用程序获得工具执行的结果（例如，一个 Java 对象）。
+5.  **结果返回**：应用程序将执行结果序列化后，作为新的上下文信息发送回 AI 模型。
+6.  **最终响应**：AI 模型利用工具返回的结果，生成一个更准确、更丰富的最终答案给用户。
+
+---
+
+#### 3. 如何定义工具
+
+Spring AI 提供了多种灵活的方式来定义工具，主要围绕 `ToolCallback` 接口。
+
+##### **A. 将方法 (Methods) 定义为工具**
+
+这是最常见的方式，适用于将任意 Java 方法暴露给 AI 模型。
+
+*   **声明式 (`@Tool` 注解)**：
+    *   在任何 Java 方法上添加 `@Tool` 注解即可将其定义为一个工具。
+    *   `description` 属性至关重要，它告诉模型这个工具的用途，直接影响模型的调用决策。
+    *   使用 `@ToolParam` 注解为方法参数提供描述和是否必需的元数据。
+*   **编程式 (`MethodToolCallback`)**：
+    *   通过 `MethodToolCallback.Builder` 以编程方式手动构建工具定义，提供更精细的控制。
+
+##### **B. 将函数 (Functions) 定义为工具**
+
+适用于将 `java.util.function` 包中的函数式接口（如 `Function`, `Supplier`, `Consumer`）定义为工具，特别适合与 Spring Bean 结合使用。
+
+*   **编程式 (`FunctionToolCallback`)**：
+    *   使用 `FunctionToolCallback.Builder` 包装一个函数式接口实例。
+*   **动态化 (`@Bean` 注解)**：
+    *   将一个 `Function` 类型的 Bean 注册到 Spring 容器中。
+    *   Bean 的名称将作为工具的名称，可以使用 `@Description` 注解提供工具描述。
+    *   Spring AI 会在运行时动态解析这些 Bean 作为可用工具。
+
+---
+
+#### 4. 核心概念详解
+
+*   **`ToolDefinition`**：定义一个工具的元数据，包括**名称 (name)**、**描述 (description)** 和**输入模式 (inputSchema)**。这是模型理解工具的关键。
+*   **JSON Schema**：Spring AI 会自动为工具的输入参数生成 JSON Schema。您可以使用 `@ToolParam` (Spring AI)、`@Schema` (Swagger) 或 `@JsonProperty` (Jackson) 等注解来定制化 Schema，例如提供参数描述或设置其为可选。
+*   **`ToolContext`**：允许您在调用工具时传递额外的上下文数据（如 `tenantId`、用户认证信息），这些数据**不会**被发送给 AI 模型，仅在工具执行时可用，增强了安全性和多租户支持。
+*   **`Return Direct` (直接返回)**：通过设置 `returnDirect = true`，可以让工具的执行结果直接返回给最终用户，而不是再次传递给 AI 模型进行处理。这对于结果本身就是答案的 RAG 场景或需要终止代理循环的场景非常有用。
+*   **`Result Conversion` (结果转换)**：通过实现 `ToolCallResultConverter` 接口，可以自定义工具的返回值（如一个 POJO）如何被序列化成字符串再发送给模型。默认使用 Jackson 进行 JSON 序列化。
+
+---
+
+#### 5. 工具执行与控制
+
+*   **`ToolCallingManager`**：管理工具执行生命周期的核心接口。
+*   **框架控制的执行 (默认)**：默认情况下，Spring AI 会自动处理整个工具调用流程。您只需定义工具并将其提供给 `ChatClient` 即可。
+*   **用户控制的执行**：通过设置 `internalToolExecutionEnabled(false)`，您可以接管工具调用的控制权。在这种模式下，模型会返回一个工具调用请求，您需要手动调用 `ToolCallingManager` 来执行工具，并管理对话历史，这为构建复杂的多步代理（Agent）提供了极大的灵活性。
+
+---
+
+#### 6. 其他重要主题
+
+*   **异常处理**：工具执行失败会抛出 `ToolExecutionException`。您可以提供一个 `ToolExecutionExceptionProcessor` Bean 来自定义异常处理逻辑，例如是向模型返回错误信息还是向上抛出异常。
+*   **工具解析**：当您只提供工具名称时，`ToolCallbackResolver` 负责在运行时查找并解析对应的 `ToolCallback` 实例。
+*   **可观测性与日志**：Spring AI 为工具调用提供了内置的可观测性支持（tracing），并可在 `DEBUG` 级别下查看详细的日志信息。
+
+总之，Spring AI 的工具调用功能是一个设计精良、功能全面且高度可扩展的系统，它使开发者能够轻松地将强大的 AI 模型与现有的业务逻辑和数据源无缝集成。
+
+
+
+
 
 
 
