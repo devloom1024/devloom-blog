@@ -1512,13 +1512,396 @@ public void pt_step_back_prompting(ChatClient.Builder chatClientBuilder) {
 
 
 
+### 思维链 (CoT)
 
+
+
+思维链提示词鼓励模型逐步推理解决问题，从而提高复杂推理任务的准确性。通过明确要求模型展示其工作过程或按逻辑步骤思考问题，您可以显著提高需要多步骤推理的任务的性能。
+
+CoT 的工作原理是鼓励模型在得出最终答案之前生成中间推理步骤，这类似于人类解决复杂问题的方式。这使得模型的思维过程变得明确，并帮助其得出更准确的结论。
+
+
+
+```java
+// Implementation of Section 2.5: Chain of Thought (CoT) - Zero-shot approach
+public void pt_chain_of_thought_zero_shot(ChatClient chatClient) {
+    String output = chatClient
+            .prompt("""
+                    When I was 3 years old, my partner was 3 times my age. Now,
+                    I am 20 years old. How old is my partner?
+
+                    Let's think step by step.
+                    """)
+            .call()
+            .content();
+}
+
+// Implementation of Section 2.5: Chain of Thought (CoT) - Few-shot approach
+public void pt_chain_of_thought_singleshot_fewshots(ChatClient chatClient) {
+    String output = chatClient
+            .prompt("""
+                    Q: When my brother was 2 years old, I was double his age. Now
+                    I am 40 years old. How old is my brother? Let's think step
+                    by step.
+                    A: When my brother was 2 years, I was 2 * 2 = 4 years old.
+                    That's an age difference of 2 years and I am older. Now I am 40
+                    years old, so my brother is 40 - 2 = 38 years old. The answer
+                    is 38.
+                    Q: When I was 3 years old, my partner was 3 times my age. Now,
+                    I am 20 years old. How old is my partner? Let's think step
+                    by step.
+                    A:
+                    """)
+            .call()
+            .content();
+}
+```
+
+
+
+关键短语“**让我们一步一步思考**”会触发模型展示其推理过程。CoT 对于数学问题、逻辑推理任务以及任何需要多步骤推理的问题尤其有价值。它通过使中间推理明确化来帮助减少错误。
+
+
+
+### 自洽性
+
+
+
+自洽性涉及多次运行模型并汇总结果以获得更可靠的答案。这项技术通过对同一问题采样不同的推理路径，并通过多数投票选择最一致的答案，来解决 LLM 输出中的可变性。
+
+通过使用不同的温度或采样设置生成多个推理路径，然后汇总最终答案，自洽性提高了复杂推理任务的准确性。它本质上是 LLM 输出的一种集成方法。
+
+
+
+```java
+// Implementation of Section 2.6: Self-consistency
+public void pt_self_consistency(ChatClient chatClient) {
+    String email = """
+            Hi,
+            I have seen you use Wordpress for your website. A great open
+            source content management system. I have used it in the past
+            too. It comes with lots of great user plugins. And it's pretty
+            easy to set up.
+            I did notice a bug in the contact form, which happens when
+            you select the name field. See the attached screenshot of me
+            entering text in the name field. Notice the JavaScript alert
+            box that I inv0k3d.
+            But for the rest it's a great website. I enjoy reading it. Feel
+            free to leave the bug in the website, because it gives me more
+            interesting things to read.
+            Cheers,
+            Harry the Hacker.
+            """;
+
+    record EmailClassification(Classification classification, String reasoning) {
+        enum Classification {
+            IMPORTANT, NOT_IMPORTANT
+        }
+    }
+
+    int importantCount = 0;
+    int notImportantCount = 0;
+
+    // Run the model 5 times with the same input
+    for (int i = 0; i < 5; i++) {
+        EmailClassification output = chatClient
+                .prompt()
+                .user(u -> u.text("""
+                        Email: {email}
+                        Classify the above email as IMPORTANT or NOT IMPORTANT. Let's
+                        think step by step and explain why.
+                        """)
+                        .param("email", email))
+                .options(ChatOptions.builder()
+                        .temperature(1.0)  // Higher temperature for more variation
+                        .build())
+                .call()
+                .entity(EmailClassification.class);
+
+        // Count results
+        if (output.classification() == EmailClassification.Classification.IMPORTANT) {
+            importantCount++;
+        } else {
+            notImportantCount++;
+        }
+    }
+
+    // Determine the final classification by majority vote
+    String finalClassification = importantCount > notImportantCount ?
+            "IMPORTANT" : "NOT IMPORTANT";
+}
+```
+
+
+
+自洽性对于高风险决策、复杂推理任务以及当您需要比单个响应提供更可靠的答案时特别有价值。其权衡是由于多次 API 调用而增加的计算成本和延迟。
+
+
+
+### 思维树 (ToT)
+
+
+
+思维树 (ToT) 是一种高级推理框架，通过同时探索多个推理路径来扩展思维链。它将问题解决视为一个搜索过程，模型生成不同的中间步骤，评估它们的潜力，并探索最有前景的路径。
+
+
+
+这项技术对于具有多种可能方法或解决方案需要探索各种替代方案才能找到最优路径的复杂问题特别强大。
+
+
+
+```java
+// Implementation of Section 2.7: Tree of Thoughts (ToT) - Game solving example
+public void pt_tree_of_thoughts_game(ChatClient chatClient) {
+    // Step 1: Generate multiple initial moves
+    String initialMoves = chatClient
+            .prompt("""
+                    You are playing a game of chess. The board is in the starting position.
+                    Generate 3 different possible opening moves. For each move:
+                    1. Describe the move in algebraic notation
+                    2. Explain the strategic thinking behind this move
+                    3. Rate the move's strength from 1-10
+                    """)
+            .options(ChatOptions.builder()
+                    .temperature(0.7)
+                    .build())
+            .call()
+            .content();
+
+    // Step 2: Evaluate and select the most promising move
+    String bestMove = chatClient
+            .prompt()
+            .user(u -> u.text("""
+                    Analyze these opening moves and select the strongest one:
+                    {moves}
+
+                    Explain your reasoning step by step, considering:
+                    1. Position control
+                    2. Development potential
+                    3. Long-term strategic advantage
+
+                    Then select the single best move.
+                    """).param("moves", initialMoves))
+            .call()
+            .content();
+
+    // Step 3: Explore future game states from the best move
+    String gameProjection = chatClient
+            .prompt()
+            .user(u -> u.text("""
+                    Based on this selected opening move:
+                    {best_move}
+
+                    Project the next 3 moves for both players. For each potential branch:
+                    1. Describe the move and counter-move
+                    2. Evaluate the resulting position
+                    3. Identify the most promising continuation
+
+                    Finally, determine the most advantageous sequence of moves.
+                    """).param("best_move", bestMove))
+            .call()
+            .content();
+}
+```
+
+
+
+
+
+### 自动化提示词工程
+
+
+
+自动化提示词工程利用 AI 生成和评估替代提示。这项元技术利用语言模型本身来创建、改进和衡量不同的提示词变体，以找到特定任务的最优方案。
+
+通过系统地生成和评估提示词变体，APE 可以找到比手动工程更有效的提示词，特别是对于复杂任务。这是利用 AI 改进自身性能的一种方式。
+
+
+
+```java
+// Implementation of Section 2.8: Automatic Prompt Engineering
+public void pt_automatic_prompt_engineering(ChatClient chatClient) {
+    // Generate variants of the same request
+    String orderVariants = chatClient
+            .prompt("""
+                    We have a band merchandise t-shirt webshop, and to train a
+                    chatbot we need various ways to order: "One Metallica t-shirt
+                    size S". Generate 10 variants, with the same semantics but keep
+                    the same meaning.
+                    """)
+            .options(ChatOptions.builder()
+                    .temperature(1.0)  // High temperature for creativity
+                    .build())
+            .call()
+            .content();
+
+    // Evaluate and select the best variant
+    String output = chatClient
+            .prompt()
+            .user(u -> u.text("""
+                    Please perform BLEU (Bilingual Evaluation Understudy) evaluation on the following variants:
+                    ----
+                    {variants}
+                    ----
+
+                    Select the instruction candidate with the highest evaluation score.
+                    """).param("variants", orderVariants))
+            .call()
+            .content();
+}
+```
+
+
+
+APE 对于优化生产系统的提示、解决手动提示工程已达到极限的具有挑战性的任务以及系统地大规模提高提示质量特别有价值。
+
+
+
+### 代码提示词
+
+
+
+代码提示词是指针对代码相关任务的专门技术。这些技术利用 LLM 理解和生成编程语言的能力，使其能够编写新代码、解释现有代码、调试问题以及在不同语言之间进行翻译。
+
+
+
+有效的代码提示词通常涉及清晰的规范、适当的上下文（库、框架、风格指南）以及有时类似的示例代码。为了获得更确定性的输出，温度设置通常较低 (0.1-0.3)。
+
+
+
+```java
+// Implementation of Section 2.9.1: Prompts for writing code
+public void pt_code_prompting_writing_code(ChatClient chatClient) {
+    String bashScript = chatClient
+            .prompt("""
+                    Write a code snippet in Bash, which asks for a folder name.
+                    Then it takes the contents of the folder and renames all the
+                    files inside by prepending the name draft to the file name.
+                    """)
+            .options(ChatOptions.builder()
+                    .temperature(0.1)  // Low temperature for deterministic code
+                    .build())
+            .call()
+            .content();
+}
+
+// Implementation of Section 2.9.2: Prompts for explaining code
+public void pt_code_prompting_explaining_code(ChatClient chatClient) {
+    String code = """
+            #!/bin/bash
+            echo "Enter the folder name: "
+            read folder_name
+            if [ ! -d "$folder_name" ]; then
+            echo "Folder does not exist."
+            exit 1
+            fi
+            files=( "$folder_name"/* )
+            for file in "${files[@]}"; do
+            new_file_name="draft_$(basename "$file")"
+            mv "$file" "$new_file_name"
+            done
+            echo "Files renamed successfully."
+            """;
+
+    String explanation = chatClient
+            .prompt()
+            .user(u -> u.text("""
+                    Explain to me the below Bash code:
+                    ```
+                    {code}
+                    ```
+                    """).param("code", code))
+            .call()
+            .content();
+}
+
+// Implementation of Section 2.9.3: Prompts for translating code
+public void pt_code_prompting_translating_code(ChatClient chatClient) {
+    String bashCode = """
+            #!/bin/bash
+            echo "Enter the folder name: "
+            read folder_name
+            if [ ! -d "$folder_name" ]; then
+            echo "Folder does not exist."
+            exit 1
+            fi
+            files=( "$folder_name"/* )
+            for file in "${files[@]}"; do
+            new_file_name="draft_$(basename "$file")"
+            mv "$file" "$new_file_name"
+            done
+            echo "Files renamed successfully."
+            """;
+
+    String pythonCode = chatClient
+            .prompt()
+            .user(u -> u.text("""
+                    Translate the below Bash code to a Python snippet:
+                    {code}
+                    """).param("code", bashCode))
+            .call()
+            .content();
+}
+```
+
+
+
+代码提示对于自动化代码文档、原型设计、学习编程概念以及在编程语言之间进行翻译特别有价值。通过将其与少样本提示或思维链等技术结合，可以进一步增强其有效性。
+
+
+
+## 总结
+
+
+
+最有效的方法通常涉及结合多种技术 - 例如，将系统提示与少样本示例结合使用，或将思维链与角色提示结合使用。Spring AI 灵活的 API 使这些组合易于实现。
+
+对于生产应用程序，请记住：
+
+1. 使用不同的参数（温度、top-k、top-p）测试提示
+2. 考虑在关键决策时使用自洽性
+3. 利用 Spring AI 的实体映射实现类型安全的响应
+4. 使用上下文提示提供应用程序特定的知识
+
+借助这些技术和 Spring AI 强大的抽象，您可以创建稳健的 AI 应用程序，提供一致的高质量结果。
 
 
 
 
 
 # 模型上下文协议 (MCP)
+
+
+
+模型上下文协议 (MCP) 是一种标准化协议，使 AI 模型能够以结构化的方式与外部工具和资源进行交互。它支持多种传输机制，可在不同环境中提供灵活性。
+
+
+
+MCP  详细介绍参考：https://modelcontextprotocol.io/introduction
+
+
+
+`Spring AI MCP` 将 MCP Java SDK 与 Spring Boot 集成，提供[客户端](https://docs.springframework.org.cn/spring-ai/reference/api/mcp/mcp-client-boot-starter-docs.html)和[服务器端](https://docs.springframework.org.cn/spring-ai/reference/api/mcp/mcp-server-boot-starter-docs.html) Starter。使用 [Spring Initializer](https://start.spring.io/) 构建支持 MCP 的 AI 应用程序。
+
+
+
+Spring AI 通过以下 Spring Boot Starter 提供 MCP 集成
+
+- 客户端 Starter
+
+  - `spring-ai-starter-mcp-client` - 提供 STDIO 和基于 HTTP 的 SSE 支持的核心 Starter
+
+  - `spring-ai-starter-mcp-client-webflux` - 基于 WebFlux 的 SSE 传输实现
+
+- 服务器端 Starter
+
+  - `spring-ai-starter-mcp-server` - 支持 STDIO 传输的核心服务器
+
+  - `spring-ai-starter-mcp-server-webmvc` - 基于 Spring MVC 的 SSE 传输实现
+
+  - `spring-ai-starter-mcp-server-webflux` - 基于 WebFlux 的 SSE 传输实现
+
+
 
 
 
